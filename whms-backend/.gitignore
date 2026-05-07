@@ -1,0 +1,28 @@
+node_modules
+
+# Build outputs
+dist
+build
+
+# Logs
+logs
+*.log
+
+# OS / IDE
+.DS_Store
+.fleet
+.idea
+.eslintcache
+*.tsbuildinfo
+.turbo
+.pnpm-store
+
+# Keep environment variables out of version control
+.env
+.env.*
+!.env.example
+
+# Test outputs
+coverage
+
+/src/generated/prisma

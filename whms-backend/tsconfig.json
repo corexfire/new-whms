@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/__tests__/**",
+    "src/routes/label.routes.ts",
+    "src/routes/offline-sync.routes.ts",
+    "src/routes/barcode.routes.ts",
+    "src/routes/bulk-sync.routes.ts",
+    "src/routes/print.routes.ts",
+    "src/services/label-template.service.ts",
+    "src/services/barcode.service.ts",
+    "src/services/bulk-sync.service.ts",
+    "src/services/excel-export.service.ts",
+    "src/services/pdf-export.service.ts",
+    "src/services/storage.service.ts",
+    "src/services/zpl.service.ts"
+  ]
+}

@@ -1,0 +1,1244 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. IAM (Identity & Access Management)
+// ==========================================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  posTransactions PosTransaction[]
+  posShifts       PosShift[]
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique // e.g., SUPER_ADMIN, MANAGER, INBOUND_STAFF, dll
+  description String?
+  users       User[]
+  permissions Permission[] @relation("RolePermissions")
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  action      String // e.g., 'create', 'read', 'update', 'delete', 'approve'
+  resource    String // e.g., 'purchase_orders', 'users', 'inventory'
+  description String?
+  roles       Role[]  @relation("RolePermissions")
+
+  @@unique([action, resource])
+}
+
+// ==========================================
+// 2. MASTER DATA (Hierarchy & Items)
+// ==========================================
+
+model Warehouse {
+  id        String     @id @default(uuid())
+  code      String     @unique // e.g., WH01
+  name      String
+  address   String?
+  isActive  Boolean    @default(true)
+  dataSource DataSource @default(LOCAL)
+  externalMeta Json?
+  locations Location[]
+  stocktakes Stocktake[]
+  transfersFrom StockTransfer[] @relation("FromWarehouse")
+  transfersTo StockTransfer[] @relation("ToWarehouse")
+  shopifyLocationMappings ShopifyLocationMapping[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Location {
+  id          String    @id @default(uuid())
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  zone        String? // e.g., A
+  aisle       String? // e.g., 02
+  rack        String? // e.g., C
+  level       String? // e.g., 03
+  bin         String? // e.g., B
+  code        String    @unique // WH01-A-02-C-03-B
+  capacity    Float? // Max volume/weight
+  isActive    Boolean   @default(true)
+  dataSource DataSource @default(LOCAL)
+  externalMeta Json?
+
+  inventories    Inventory[]
+  PickListItem   PickListItem[]
+  stockMovements StockMovement[]
+  stocktakeCounts StocktakeCount[]
+  stocktakeAdjustments StocktakeAdjustment[]
+  stockAdjustments   StockAdjustment[]
+  transfersFrom StockTransferItem[] @relation("TransferFromLocation")
+  transfersTo StockTransferItem[] @relation("TransferToLocation")
+
+  putawayFromTasks PutawayTask[] @relation("PutawayFromLocation")
+  putawayToItems   PutawayTaskItem[] @relation("PutawayToLocation")
+}
+
+model Category {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  items       Item[]
+  products    Product[]
+  discountRules DiscountRule[]
+  shopifyCollectionMappings ShopifyCollectionMapping[]
+}
+
+model Product {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  description String?
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  isActive Boolean @default(true)
+  dataSource DataSource @default(LOCAL)
+
+  items Item[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UoM {
+  id          String    @id @default(uuid())
+  code        String    @unique // e.g., PCS, DUS, PACK
+  description String?
+  items       ItemUoM[]
+}
+
+model Item {
+  id          String    @id @default(uuid())
+  sku         String    @unique
+  name        String
+  description String?
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  isActive Boolean @default(true)
+  dataSource DataSource @default(LOCAL)
+
+  color    String?
+  size     String?
+  material String?
+  variantAttributes Json?
+
+  // Track flags
+  trackLot    Boolean @default(false)
+  trackExpiry Boolean @default(false)
+
+  uoms        ItemUoM[]
+  lots        ItemLot[]
+  images      ItemImage[]
+  inventories Inventory[]
+
+  poItems  POItem[]
+  grnItems GRNItem[]
+  soItems  SOItem[]
+
+  supplierReturnItems SupplierReturnItem[]
+  customerReturnItems CustomerReturnItem[]
+  putawayTaskItems PutawayTaskItem[]
+  stockMovements StockMovement[]
+  stocktakeCounts    StocktakeCount[]
+  stocktakeAdjustments StocktakeAdjustment[]
+  stockAdjustments   StockAdjustment[]
+  transferItems      StockTransferItem[]
+  posItems           PosItem[]
+  bundleItems        BundleItem[]
+  shopifyMappings    ShopifyItemMapping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+}
+
+enum BarcodeType {
+  CODE128
+  EAN13
+  QR_CODE
+}
+
+enum DataSource {
+  LOCAL
+  SHOPIFY
+}
+
+model ItemUoM {
+  id     String @id @default(uuid())
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+  uomId  String
+  uom    UoM    @relation(fields: [uomId], references: [id])
+
+  // -- Aturan Multi Unit --
+  // conversionRate = 1 adalah unit terbesar.
+  // conversionRate > 1 adalah unit yang lebih kecil.
+  conversionRate Float @default(1)
+
+  // Price proporsional sesuai conversion Rate
+  price Float
+
+  // Barcode khusus untuk uom terkait (EAN-13, dsb)
+  barcode String? @unique
+
+  barcodeType BarcodeType @default(QR_CODE)
+
+  @@unique([itemId, uomId])
+}
+
+model ItemImage {
+  id     String @id @default(uuid())
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  filename String
+  mimeType String
+  size     Int
+
+  createdAt DateTime @default(now())
+
+  @@index([itemId])
+}
+
+model ItemLot {
+  id           String    @id @default(uuid())
+  itemId       String
+  item         Item      @relation(fields: [itemId], references: [id])
+  lotNumber    String
+  expiryDate   DateTime?
+  manufactured DateTime?
+  isActive     Boolean   @default(true)
+
+  inventories Inventory[]
+  stockMovements StockMovement[]
+  putawayTaskItems PutawayTaskItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([itemId, lotNumber])
+}
+
+model Supplier {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  name           String
+  address        String?
+  phone          String?
+  email          String?
+  purchaseOrders PurchaseOrder[]
+  supplierReturns SupplierReturn[]
+  accountPayables AccountPayable[]
+}
+
+model Customer {
+  id          String       @id @default(uuid())
+  code        String       @unique
+  name        String
+  address     String?
+  phone       String?
+  email       String?
+  dataSource  DataSource   @default(LOCAL)
+  externalMeta Json?
+  salesOrders SalesOrder[]
+  customerReturns CustomerReturn[]
+  posTransactions PosTransaction[]
+  accountReceivables AccountReceivable[]
+}
+
+model AccountPayable {
+  id            String   @id @default(uuid())
+  payableNumber String   @unique
+  supplierId    String
+  supplier      Supplier @relation(fields: [supplierId], references: [id])
+  referenceId   String?
+  referenceType String?
+  description   String
+  totalAmount   Float
+  openAmount    Float
+  dueDate       DateTime
+  status        String // OPEN, PARTIAL, PAID, OVERDUE, CANCELLED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments APPayment[]
+}
+
+model APPayment {
+  id              String          @id @default(uuid())
+  accountPayableId String
+  accountPayable   AccountPayable @relation(fields: [accountPayableId], references: [id], onDelete: Cascade)
+  amount          Float
+  paymentDate     DateTime
+  paymentMethod   String // CASH, BANK_TRANSFER, GIRO, CHEQUE
+  paymentAccountId String?
+  paymentAccount  ChartOfAccount? @relation(fields: [paymentAccountId], references: [id])
+  reference       String?
+  notes           String?
+  createdAt       DateTime @default(now())
+}
+
+model AccountReceivable {
+  id             String   @id @default(uuid())
+  receivableNumber String @unique
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id])
+  referenceId    String?
+  referenceType  String?
+  description    String
+  totalAmount    Float
+  openAmount     Float
+  dueDate        DateTime
+  status         String // OPEN, PARTIAL, PAID, OVERDUE, CANCELLED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  payments ARPayment[]
+}
+
+model ARPayment {
+  id                String             @id @default(uuid())
+  accountReceivableId String
+  accountReceivable   AccountReceivable @relation(fields: [accountReceivableId], references: [id], onDelete: Cascade)
+  amount            Float
+  paymentDate       DateTime
+  paymentMethod     String // CASH, BANK_TRANSFER, GIRO, CHEQUE
+  paymentAccountId  String?
+  paymentAccount    ChartOfAccount? @relation(fields: [paymentAccountId], references: [id])
+  reference         String?
+  notes             String?
+  createdAt         DateTime @default(now())
+}
+
+// ==========================================
+// 3. INBOUND (PO & GRN)
+// ==========================================
+
+model PurchaseOrder {
+  id           String    @id @default(uuid())
+  poNumber     String    @unique
+  supplierId   String
+  supplier     Supplier  @relation(fields: [supplierId], references: [id])
+  orderDate    DateTime
+  expectedDate DateTime?
+  status       String // DRAFT, PENDING_APPROVAL, APPROVED, PARTIAL, CLOSED, CANCELLED
+  totalAmount  Float     @default(0)
+
+  items         POItem[]
+  goodsReceipts GoodsReceipt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model POItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  itemId          String
+  item            Item          @relation(fields: [itemId], references: [id])
+  quantity        Float // Dalam UoM dasar/pilihan
+  unitPrice       Float
+  totalPrice      Float
+
+  grnItems GRNItem[]
+}
+
+model GoodsReceipt {
+  id              String        @id @default(uuid())
+  grnNumber       String        @unique
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  receiptDate     DateTime      @default(now())
+  status          String // DRAFT, COMPLETED, VOIDED
+  notes           String?
+
+  items GRNItem[]
+  putawayTasks PutawayTask[]
+
+  createdAt DateTime @default(now())
+}
+
+model GRNItem {
+  id             String       @id @default(uuid())
+  goodsReceiptId String
+  goodsReceipt   GoodsReceipt @relation(fields: [goodsReceiptId], references: [id])
+  poItemId       String
+  poItem         POItem       @relation(fields: [poItemId], references: [id])
+  itemId         String
+  item           Item         @relation(fields: [itemId], references: [id])
+  receivedQty    Float
+
+  // Referensi opsional ke Lot jika item tracking lot aktif
+  lotNumber String?
+}
+
+model PutawayTask {
+  id             String       @id @default(uuid())
+  putawayNumber  String       @unique
+  goodsReceiptId String
+  goodsReceipt   GoodsReceipt @relation(fields: [goodsReceiptId], references: [id])
+  status         String // DRAFT, COMPLETED, VOIDED
+  fromLocationId String
+  fromLocation   Location     @relation("PutawayFromLocation", fields: [fromLocationId], references: [id])
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  completedAt    DateTime?
+
+  items PutawayTaskItem[]
+}
+
+model PutawayTaskItem {
+  id            String      @id @default(uuid())
+  putawayTaskId String
+  putawayTask   PutawayTask @relation(fields: [putawayTaskId], references: [id], onDelete: Cascade)
+  itemId        String
+  item          Item        @relation(fields: [itemId], references: [id])
+  itemLotId     String?
+  itemLot       ItemLot?    @relation(fields: [itemLotId], references: [id])
+  quantity      Float
+  toLocationId  String?
+  toLocation    Location?   @relation("PutawayToLocation", fields: [toLocationId], references: [id])
+  status        String // PENDING, ASSIGNED
+}
+
+// ==========================================
+// 4. OUTBOUND (SO & Picking)
+// ==========================================
+
+model SalesOrder {
+  id          String   @id @default(uuid())
+  soNumber    String   @unique
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  orderDate   DateTime
+  status      String // DRAFT, APPROVED, PICKING, PACKED, SHIPPED, DELIVERED, CANCELLED
+  totalAmount Float    @default(0)
+  dataSource  DataSource @default(LOCAL)
+
+  items     SOItem[]
+  pickLists PickList[]
+  shipments Shipment[]
+  customerReturns CustomerReturn[]
+  shopifyMappings ShopifyOrderMapping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SOItem {
+  id           String     @id @default(uuid())
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  itemId       String
+  item         Item       @relation(fields: [itemId], references: [id])
+  quantity     Float
+  unitPrice    Float
+  totalPrice   Float
+
+  pickListItems PickListItem[]
+}
+
+model PickList {
+  id           String     @id @default(uuid())
+  pickNumber   String     @unique
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id])
+  status       String // NEW, IN_PROGRESS, COMPLETED
+  assignedTo   String? // ID user_picker
+
+  items     PickListItem[]
+  createdAt DateTime       @default(now())
+}
+
+model PickListItem {
+  id         String   @id @default(uuid())
+  pickListId String
+  pickList   PickList @relation(fields: [pickListId], references: [id])
+  soItemId   String
+  soItem     SOItem   @relation(fields: [soItemId], references: [id])
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+
+  quantity  Float // Qty yg harus diambil
+  pickedQty Float @default(0) // Qty yg sudah scan
+}
+
+// ==========================================
+// 4b. SHIPPING & DELIVERY
+// ==========================================
+
+model Shipment {
+  id              String              @id @default(uuid())
+  awbNumber      String              @unique
+  salesOrderId   String
+  salesOrder     SalesOrder          @relation(fields: [salesOrderId], references: [id])
+  carrier        String
+  trackingNumber String?
+  recipientName  String
+  recipientPhone String
+  recipientAddress String
+  weight         Float?
+  notes          String?
+  status         String // PENDING, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RETURNED, CANCELLED
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  
+  trackingHistory ShipmentTracking[]
+}
+
+model ShipmentTracking {
+  id          String   @id @default(uuid())
+  shipmentId  String
+  shipment    Shipment @relation(fields: [shipmentId], references: [id])
+  status      String
+  location    String?
+  description String?
+  timestamp   DateTime @default(now())
+}
+
+// ==========================================
+// 5. INVENTORY & TRACKING
+// ==========================================
+
+model Inventory {
+  id         String   @id @default(uuid())
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+  itemLotId  String?
+  itemLot    ItemLot? @relation(fields: [itemLotId], references: [id])
+
+  // Stock Tiers
+  onHandQty    Float @default(0)
+  allocatedQty Float @default(0)
+  availableQty Float @default(0) // (onHandQty - allocatedQty)
+
+  @@unique([itemId, locationId, itemLotId])
+}
+
+model StockMovement {
+  id          String   @id @default(uuid())
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id])
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id])
+  itemLotId   String?
+  itemLot     ItemLot? @relation(fields: [itemLotId], references: [id])
+  type        String // IN, OUT, TRANSFER, ADJUSTMENT
+  quantity    Float // Positif atau Negatif
+  referenceId String? // ID dari GRN, SO, atau Adjustment
+  remarks     String?
+  createdAt   DateTime @default(now())
+}
+
+// ==========================================
+// 5b. STOCKTAKE & ADJUSTMENTS
+// ==========================================
+
+model Stocktake {
+  id              String   @id @default(uuid())
+  stocktakeNumber String   @unique
+  warehouseId     String
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
+  name            String
+  stocktakeDate   DateTime
+  status          String // DRAFT, IN_PROGRESS, PENDING_APPROVAL, APPROVED, REJECTED, COMPLETED
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  counts      StocktakeCount[]
+  adjustments StocktakeAdjustment[]
+}
+
+model StocktakeCount {
+  id           String    @id @default(uuid())
+  stocktakeId  String
+  stocktake    Stocktake @relation(fields: [stocktakeId], references: [id])
+  inventoryId  String
+  itemId       String
+  item         Item      @relation(fields: [itemId], references: [id])
+  locationId   String
+  location     Location  @relation(fields: [locationId], references: [id])
+  systemQty   Float
+  countedQty  Float?
+  notes        String?
+  countedAt    DateTime?
+}
+
+model StocktakeAdjustment {
+  id           String    @id @default(uuid())
+  stocktakeId  String
+  stocktake    Stocktake @relation(fields: [stocktakeId], references: [id])
+  inventoryId  String
+  itemId       String
+  item         Item      @relation(fields: [itemId], references: [id])
+  locationId   String
+  location     Location  @relation(fields: [locationId], references: [id])
+  systemQty    Float
+  countedQty   Float
+  difference   Float
+  approvedBy   String?
+  status       String // PENDING, COMPLETED
+  createdAt    DateTime @default(now())
+}
+
+model StockAdjustment {
+  id              String   @id @default(uuid())
+  adjustmentNumber String  @unique
+  itemId          String
+  item            Item     @relation(fields: [itemId], references: [id])
+  locationId      String
+  location        Location @relation(fields: [locationId], references: [id])
+  quantity        Float
+  reason          String // DAMAGED, EXPIRED, LOST, FOUND, CORRECTION, OTHER
+  notes           String?
+  previousQty     Float
+  newQty          Float
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  voided          Boolean  @default(false)
+  voidedBy        String?
+  voidedAt        DateTime?
+  voidReason      String?
+}
+
+model StockTransfer {
+  id              String          @id @default(uuid())
+  transferNumber  String          @unique
+  fromWarehouseId String
+  fromWarehouse   Warehouse       @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouseId   String
+  toWarehouse     Warehouse       @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  reason          String
+  status          String // DRAFT, SUBMITTED, IN_TRANSIT, COMPLETED, CANCELLED
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  items StockTransferItem[]
+}
+
+model StockTransferItem {
+  id              String        @id @default(uuid())
+  stockTransferId String
+  stockTransfer   StockTransfer @relation(fields: [stockTransferId], references: [id])
+  itemId          String
+  item            Item          @relation(fields: [itemId], references: [id])
+  fromLocationId  String
+  fromLocation    Location      @relation("TransferFromLocation", fields: [fromLocationId], references: [id])
+  toLocationId    String
+  toLocation      Location      @relation("TransferToLocation", fields: [toLocationId], references: [id])
+  quantity        Float
+  lotNumber       String?
+}
+
+// ==========================================
+// 6. POS (Point of Sale)
+// ==========================================
+
+model PosTransaction {
+  id            String  @id @default(uuid())
+  receiptNumber String  @unique
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  totalAmount   Float
+  subtotal      Float   @default(0)
+  discountTotal Float   @default(0)
+  promoCode     String?
+  taxAmount     Float   @default(0)
+  amountPaid    Float   @default(0)
+  changeAmount  Float   @default(0)
+  paymentMethod String // CASH, QRIS, DEBIT, CREDIT
+  paymentReference String?
+  paymentProvider  String?
+  status        String // COMPLETED, VOIDED
+  notes         String?
+  cashierId     String
+  cashier       User    @relation(fields: [cashierId], references: [id])
+  shiftId       String?
+
+  shift       PosShift? @relation(fields: [shiftId], references: [id])
+  items       PosItem[]
+  createdAt   DateTime  @default(now())
+}
+
+model PosShift {
+  id           String   @id @default(uuid())
+  shiftNumber  String   @unique
+  cashierId    String
+  cashier      User     @relation(fields: [cashierId], references: [id])
+  openingCash  Float
+  closingCash  Float?
+  expectedCash Float?
+  variance     Float?
+  status      String // OPEN, CLOSED
+  notes       String?
+  openedAt    DateTime @default(now())
+  closedAt    DateTime?
+  
+  transactions PosTransaction[]
+}
+
+model PosItem {
+  id               String         @id @default(uuid())
+  posTransactionId String
+  posTransaction   PosTransaction @relation(fields: [posTransactionId], references: [id])
+  itemId           String
+  item             Item           @relation(fields: [itemId], references: [id])
+  quantity         Float
+  unitPrice        Float
+  discount         Float          @default(0)
+  totalPrice       Float
+}
+
+// ==========================================
+// 7. ACCOUNTING (Jurnal Ledger)
+// ==========================================
+
+model ChartOfAccount {
+  id          String  @id @default(uuid())
+  code        String  @unique // e.g., 1000, 1120, 1310, 2110, 4100
+  name        String
+  type        String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  description String?
+  isActive    Boolean @default(true)
+  parentId    String?
+  parent      ChartOfAccount?  @relation("CoaHierarchy", fields: [parentId], references: [id])
+  children    ChartOfAccount[] @relation("CoaHierarchy")
+  balance     Float   @default(0)
+
+  journalLines JournalLine[]
+  apPayments   APPayment[]
+  arPayments   ARPayment[]
+}
+
+model JournalEntry {
+  id          String   @id @default(uuid())
+  entryNumber String   @unique
+  date        DateTime @default(now())
+  description String
+  referenceId String? // Misal: GRN-001, SO-005
+  source      String   @default("MANUAL") // MANUAL, AUTO
+  status      String // POSTED, VOID
+
+  lines JournalLine[]
+}
+
+model JournalLine {
+  id             String         @id @default(uuid())
+  journalEntryId String
+  journalEntry   JournalEntry   @relation(fields: [journalEntryId], references: [id])
+  accountId      String
+  account        ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  memo   String?
+  debit  Float @default(0)
+  credit Float @default(0)
+}
+
+// ==========================================
+// 8. PWA OFFLINE SYNC
+// ==========================================
+
+model OfflineAction {
+  id         String   @id @default(uuid())
+  actionType String // Misal: POS_SALE, PICK_CONFIRM, STOCKTAKE
+  payload    Json
+  status     String // PENDING, SYNCED, CONFLICT, FAILED
+  retryCount Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+// ==========================================
+// 9. LABEL & PRINTING
+// ==========================================
+
+model LabelTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  type      String // product, shipping, custom, receipt
+  width     Int?
+  height    Int?
+  elements  Json // Array of LabelElement
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+}
+
+model PrinterConfig {
+  id        String   @id @default(uuid())
+  name      String
+  ipAddress String
+  port      Int      @default(9100)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==========================================
+// 10. SUPPLIER RETURNS
+// ==========================================
+
+model SupplierReturn {
+  id           String              @id @default(uuid())
+  returnNumber String              @unique
+  supplierId   String
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  reason      String
+  status      String // DRAFT, SUBMITTED, COMPLETED, CANCELLED
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  items       SupplierReturnItem[]
+}
+
+model SupplierReturnItem {
+  id              String         @id @default(uuid())
+  supplierReturnId String
+  supplierReturn  SupplierReturn @relation(fields: [supplierReturnId], references: [id])
+  itemId         String
+  item           Item           @relation(fields: [itemId], references: [id])
+  quantity       Float
+  lotNumber      String?
+  notes          String?
+}
+
+// ==========================================
+// 11. CUSTOMER RETURNS (OUTBOUND)
+// ==========================================
+
+model CustomerReturn {
+  id           String    @id @default(uuid())
+  returnNumber String    @unique
+  customerId   String
+  customer     Customer  @relation(fields: [customerId], references: [id])
+  salesOrderId String?
+  salesOrder   SalesOrder? @relation(fields: [salesOrderId], references: [id])
+  reason       String
+  notes        String?
+  status       String // DRAFT, SUBMITTED, COMPLETED, CANCELLED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  items        CustomerReturnItem[]
+}
+
+model CustomerReturnItem {
+  id              String         @id @default(uuid())
+  customerReturnId String
+  customerReturn  CustomerReturn @relation(fields: [customerReturnId], references: [id])
+  itemId          String
+  item            Item           @relation(fields: [itemId], references: [id])
+  quantity        Float
+  lotNumber       String?
+  notes           String?
+}
+
+// ==========================================
+// 12. PROMOTIONS (Bundles & Discounts)
+// ==========================================
+
+model Bundle {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  bundlePrice Float
+  stock       Int?
+  endDate     DateTime?
+  isActive    Boolean  @default(true)
+  
+  items BundleItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BundleItem {
+  id        String @id @default(uuid())
+  bundleId  String
+  bundle    Bundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      Item   @relation(fields: [itemId], references: [id])
+  quantity  Float
+  unitPrice Float // Price of item within bundle
+
+  @@index([bundleId])
+  @@index([itemId])
+}
+
+enum DiscountType {
+  PERCENTAGE
+  NOMINAL
+  BUY_X_GET_Y
+}
+
+model DiscountRule {
+  id          String       @id @default(uuid())
+  name        String
+  code        String?      @unique
+  description String?
+  type        DiscountType
+  value       Float
+  minQty      Float        @default(0)
+  minPurchase Float        @default(0)
+  startDate   DateTime     @default(now())
+  endDate     DateTime?
+  isActive    Boolean      @default(true)
+
+  categories Category[]
+  shopifyMappings ShopifyDiscountMapping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GiftCard {
+  id           String     @id @default(uuid())
+  serialNumber String     @unique
+  initialValue Float
+  balance      Float
+  currency     String     @default("IDR")
+  status       String
+  issuedAt     DateTime   @default(now())
+  expiresAt    DateTime?
+  redeemedAt   DateTime?
+  dataSource   DataSource @default(LOCAL)
+  externalMeta Json?
+  shopifyMappings ShopifyGiftCardMapping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Company {
+  id           String     @id @default(uuid())
+  code         String     @unique
+  name         String
+  address      String?
+  phone        String?
+  email        String?
+  priceTier    String?
+  isActive     Boolean    @default(true)
+  dataSource   DataSource @default(LOCAL)
+  externalMeta Json?
+  shopifyMappings ShopifyCompanyMapping[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==========================================
+// 13. COGS & FINANCIALS
+// ==========================================
+
+model OverheadExpense {
+  id        String   @id @default(uuid())
+  period    String   // e.g. "2026-04"
+  type      String   // e.g. RENT, UTILITY, LABOR, dll
+  label     String
+  amount    Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([period])
+}
+
+model CogsSettlement {
+  id            String   @id @default(uuid())
+  period        String   @unique // e.g. "2026-04"
+  totalRevenue  Float
+  totalCogs     Float
+  totalOverhead Float
+  grossProfit   Float
+  results       Json     // Array of breakdown per SKU
+  createdAt     DateTime @default(now())
+}
+
+// ==========================================
+// 14. INTEGRATIONS (SHOPIFY)
+// ==========================================
+
+enum ShopifySyncDirection {
+  PULL
+  PUSH
+}
+
+enum ShopifySyncType {
+  PRODUCTS
+  INVENTORY
+  ORDERS
+  CUSTOMERS
+  DISCOUNTS
+  COLLECTIONS
+  LOCATIONS
+  GIFT_CARDS
+  COMPANIES
+  WEBHOOK_INVENTORY
+}
+
+enum ShopifySyncStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model ShopifyStore {
+  id             String   @id @default(uuid())
+  shop           String   @unique
+  isActive       Boolean  @default(true)
+  accessTokenEnc String
+  scope          String?
+  settings       Json?
+  installedAt    DateTime @default(now())
+  uninstalledAt  DateTime?
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  syncJobs      ShopifySyncJob[]
+  auditLogs     ShopifyAuditLog[]
+  itemMappings  ShopifyItemMapping[]
+  orderMappings ShopifyOrderMapping[]
+  locationMappings ShopifyLocationMapping[]
+  collectionMappings ShopifyCollectionMapping[]
+  discountMappings ShopifyDiscountMapping[]
+  giftCardMappings ShopifyGiftCardMapping[]
+  companyMappings ShopifyCompanyMapping[]
+  webhooks      ShopifyWebhookSubscription[]
+  webhookEvents ShopifyWebhookEvent[]
+}
+
+model ShopifyOAuthState {
+  id        String   @id
+  shop      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([shop])
+  @@index([expiresAt])
+}
+
+model ShopifyItemMapping {
+  id                      String   @id @default(uuid())
+  storeId                 String
+  store                   ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  itemId                  String
+  item                    Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  shopifyProductId        String
+  shopifyVariantId        String   @unique
+  shopifyInventoryItemId  String?
+
+  lastShopifyInventoryUpdatedAt DateTime?
+  lastWmsInventoryUpdatedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, itemId])
+  @@index([storeId])
+}
+
+model ShopifyOrderMapping {
+  id             String   @id @default(uuid())
+  storeId        String
+  store          ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  salesOrderId   String
+  salesOrder     SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  shopifyOrderId   String   @unique
+  shopifyOrderName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, salesOrderId])
+  @@index([storeId])
+}
+
+model ShopifyLocationMapping {
+  id               String   @id @default(uuid())
+  storeId          String
+  store            ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  warehouseId      String
+  warehouse        Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  shopifyLocationId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, warehouseId])
+  @@unique([storeId, shopifyLocationId])
+  @@index([storeId])
+}
+
+model ShopifyCollectionMapping {
+  id                 String      @id @default(uuid())
+  storeId            String
+  store              ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryId         String
+  category           Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  shopifyCollectionId String
+  title              String?
+  handle             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, categoryId])
+  @@unique([storeId, shopifyCollectionId])
+  @@index([storeId])
+}
+
+model ShopifyDiscountMapping {
+  id                  String      @id @default(uuid())
+  storeId             String
+  store               ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  discountRuleId      String
+  discountRule        DiscountRule @relation(fields: [discountRuleId], references: [id], onDelete: Cascade)
+  shopifyPriceRuleId  String
+  shopifyDiscountCodeId String?
+  code                String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, discountRuleId])
+  @@unique([storeId, shopifyPriceRuleId])
+  @@index([storeId])
+}
+
+model ShopifyGiftCardMapping {
+  id               String      @id @default(uuid())
+  storeId          String
+  store            ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  giftCardId       String
+  giftCard         GiftCard    @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+  shopifyGiftCardId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, giftCardId])
+  @@unique([storeId, shopifyGiftCardId])
+  @@index([storeId])
+}
+
+model ShopifyCompanyMapping {
+  id               String      @id @default(uuid())
+  storeId          String
+  store            ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shopifyCompanyId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, companyId])
+  @@unique([storeId, shopifyCompanyId])
+  @@index([storeId])
+}
+
+model ShopifySyncJob {
+  id          String   @id @default(uuid())
+  storeId     String
+  store       ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  direction   ShopifySyncDirection
+  type        ShopifySyncType
+  status      ShopifySyncStatus @default(QUEUED)
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(5)
+  bullJobId   String?
+
+  payload     Json?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, status])
+  @@index([storeId, type])
+}
+
+model ShopifyAuditLog {
+  id         String   @id @default(uuid())
+  storeId    String
+  store      ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  userId     String?
+  action     String
+  direction  ShopifySyncDirection?
+  type       ShopifySyncType?
+  entityType String?
+  entityId   String?
+  status     ShopifySyncStatus
+  message    String?
+  data       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([storeId, createdAt])
+  @@index([storeId, status])
+}
+
+model ShopifyWebhookSubscription {
+  id        String   @id @default(uuid())
+  storeId   String
+  store     ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  topic     String
+  address   String
+  webhookId String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, topic])
+}
+
+model ShopifyWebhookEvent {
+  id        String   @id @default(uuid())
+  storeId   String
+  store     ShopifyStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  webhookId String  @unique
+  topic     String
+  payload   Json
+  receivedAt DateTime @default(now())
+
+  @@index([storeId, receivedAt])
+}

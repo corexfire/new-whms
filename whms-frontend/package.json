@@ -1,0 +1,52 @@
+{
+  "name": "whms-frontend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "primeicons": "^6.0.1",
+    "@primeuix/themes": "^2.0.3",
+    "@vee-validate/zod": "^4.15.1",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
+    "dexie": "^4.4.2",
+    "echarts": "^6.0.0",
+    "jsbarcode": "^3.12.3",
+    "nuxt": "^3.15.0",
+    "pinia": "^3.0.4",
+    "pinia-plugin-persistedstate": "^4.7.1",
+    "primevue": "^4.5.4",
+    "socket.io-client": "^4.8.3",
+    "vee-validate": "^4.15.1",
+    "vue": "^3.5.31",
+    "vue-echarts": "^8.0.1",
+    "vue-qrcode": "^2.2.2",
+    "vue-router": "^4.5.0",
+    "vue-toastification": "^2.0.0-rc.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@pinia-plugin-persistedstate/nuxt": "^1.2.1",
+    "@pinia/nuxt": "^0.11.3",
+    "@primevue/nuxt-module": "^4.5.4",
+    "@types/node": "^25.5.0",
+    "@vite-pwa/nuxt": "^1.1.1",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "@vueuse/nuxt": "^14.2.1",
+    "happy-dom": "^17.4.4",
+    "nuxt-lodash": "^2.5.3",
+    "tailwindcss": "^3.4.19",
+    "vitest": "^3.1.1"
+  }
+}

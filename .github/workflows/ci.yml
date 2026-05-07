@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '**'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/testdb
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm ci
+        working-directory: whms-backend
+      - name: Lint
+        run: npm run lint
+        working-directory: whms-backend
+      - name: Prisma migrate dev
+        run: npx prisma migrate dev --name ci --preview-feature
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        working-directory: whms-backend
+      - name: Prisma DB seed (optional)
+        run: npx prisma db seed || echo "No seed script found"
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        working-directory: whms-backend
+      - name: Run tests with coverage
+        run: npm test -- --coverage
+        working-directory: whms-backend
+      - name: Check coverage threshold
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            COV=$(node -e "console.log(Math.floor(require('./coverage/coverage-summary.json').total.lines.pct))")
+            THRESHOLD=80
+            if [ "$COV" -lt "$THRESHOLD" ]; then
+              echo "Coverage ${COV}% is below threshold ${THRESHOLD}%";
+              exit 1;
+            else
+              echo "Coverage OK: ${COV}%";
+            fi
+          else
+            echo "No coverage report found"; exit 1
+          fi
+        working-directory: whms-backend

@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Variables or Overrides */
+:root {
+  --primary-color: #1F4E79;
+}
+
+/* Base PrimeVue Fixes if needed */
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f8f9fa;
+}
+html.dark body {
+  background-color: #0b1220;
+  color: #e2e8f0;
+}
+html.dark .app-shell {
+  background-color: #0b1220;
+  color: #e2e8f0;
+}
+html.dark .app-shell main {
+  background-color: #0b1220;
+}
+html.dark .app-topbar {
+  background-color: #0b1220;
+  border-color: #1e293b;
+}
+
+/* PrimeVue typography overrides to match sidebar */
+.p-component {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.p-datatable {
+  font-size: 0.875rem; /* text-sm */
+}
+.p-datatable .p-datatable-thead > tr > th {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.p-datatable .p-datatable-tbody > tr > td {
+  font-size: 0.875rem;
+}
+.p-button {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.p-inputtext, .p-inputnumber, .p-select, .p-dropdown {
+  font-size: 0.875rem;
+}
+
+.p-iconfield {
+  position: relative;
+  width: 100%;
+}
+.p-iconfield .p-inputicon {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  margin: auto;
+  height: 1rem;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+.p-iconfield[iconposition="left"] .p-inputicon {
+  left: 0.75rem;
+}
+.p-iconfield[iconposition="right"] .p-inputicon {
+  right: 0.75rem;
+}
+.p-iconfield[iconposition="left"] .p-inputtext {
+  padding-left: 2.5rem;
+}
+.p-iconfield[iconposition="right"] .p-inputtext {
+  padding-right: 2.5rem;
+}
+
+/* Custom transitions used in the project */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
