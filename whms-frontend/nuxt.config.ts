@@ -127,11 +127,15 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBase:
+        process.env.NUXT_PUBLIC_API_BASE ||
         process.env.API_BASE_URL ||
-        (process.env.NODE_ENV === 'production' ? 'https://apiwhms.erpublic.com' : 'http://localhost:4000'),
+        'https://apiwhms.erpublic.com',
       wsUrl:
+        process.env.NUXT_PUBLIC_WS_URL ||
         process.env.WS_URL ||
-        (process.env.NODE_ENV === 'production' ? 'https://apiwhms.erpublic.com' : 'http://localhost:4000'),
+        process.env.NUXT_PUBLIC_API_BASE ||
+        process.env.API_BASE_URL ||
+        'https://apiwhms.erpublic.com',
     }
   },
 
