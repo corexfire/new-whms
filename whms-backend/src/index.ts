@@ -9,6 +9,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const host = process.env.HOST || '0.0.0.0';
 
 export const prisma = new PrismaClient();
 
@@ -41,7 +42,7 @@ prisma.$use(async (params, next) => {
                 direction: 'PUSH',
                 type: 'INVENTORY' as any,
                 payload: { itemIds: [itemId], mode: 'realtime' },
-                userId: null,
+                userId: undefined,
             });
 
             try {
@@ -68,6 +69,8 @@ app.use(helmet());
 const allowedOrigins = new Set(
     [
         process.env.FRONTEND_URL,
+        'http://0.0.0.0:3000',
+        'http://0.0.0.0:3001',
         'http://localhost:3000',
         'http://localhost:3001',
         'http://localhost:3010',
@@ -81,7 +84,7 @@ app.use(
         origin(origin, callback) {
             if (!origin) return callback(null, true);
             if (allowedOrigins.has(origin)) return callback(null, true);
-            if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+            if (/^http:\/\/(localhost|0\.0\.0\.0):\d+$/.test(origin)) return callback(null, true);
             return callback(new Error('Not allowed by CORS'));
         },
         credentials: true,
@@ -170,7 +173,7 @@ app.get('/api/docs.json', (req, res) => {
 });
 
 const { httpServer } = initializeSocketIO(app);
-httpServer.listen(port, () => {
-    console.log(`[WHMS Backend] Server is running at http://localhost:${port}`);
+httpServer.listen(Number(port), host, () => {
+    console.log(`[WHMS Backend] Server is running at http://${host}:${port}`);
     console.log(`[WHMS Backend] Socket.IO ready for connections`);
 });

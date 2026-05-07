@@ -126,8 +126,8 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: process.env.API_BASE_URL || 'http://localhost:4000',
-      wsUrl:   process.env.WS_URL || 'http://localhost:4000',
+      apiBase: process.env.API_BASE_URL || 'http://0.0.0.0:4000',
+      wsUrl:   process.env.WS_URL || 'http://0.0.0.0:4000',
     }
   },
 
