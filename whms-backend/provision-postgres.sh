@@ -93,29 +93,20 @@ psql "postgresql://${PGADMIN_USER}@${PGADMIN_HOST}:${PGADMIN_PORT}/${PGADMIN_DB}
   -v role_name="$DB_USER" \
   -v role_pass="$DB_PASS" \
   -v db_name="$DB_NAME" <<'SQL'
-DO $do$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ':role_name') THEN
-    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', ':role_name', ':role_pass');
-  ELSE
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', ':role_name', ':role_pass');
-  END IF;
-END
-$do$;
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role_name', :'role_pass')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role_name');
+\gexec
 
-DO $do$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = ':db_name') THEN
-    EXECUTE format('CREATE DATABASE %I OWNER %I', ':db_name', ':role_name');
-  END IF;
-END
-$do$;
+SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role_name', :'role_pass')
+WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role_name');
+\gexec
 
-DO $do$
-BEGIN
-  EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', ':db_name', ':role_name');
-END
-$do$;
+SELECT format('CREATE DATABASE %I OWNER %I', :'db_name', :'role_name')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name');
+\gexec
+
+SELECT format('GRANT ALL PRIVILEGES ON DATABASE %I TO %I', :'db_name', :'role_name');
+\gexec
 SQL
 
 psql "postgresql://${PGADMIN_USER}@${PGADMIN_HOST}:${PGADMIN_PORT}/${DB_NAME}" -v ON_ERROR_STOP=1 <<'SQL'
